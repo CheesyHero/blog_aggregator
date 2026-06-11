@@ -49,10 +49,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	var state State
-	state.config = &cfg
+	state := &State{
+		config: &cfg,
+	}
 
-	var commands Commands
+	commands := Commands{
+		handlers: make(map[string]func(*State, Command) error),
+	}
 	commands.Register("login", HandlerLogin)
 
 	args := os.Args
@@ -66,7 +69,7 @@ func main() {
 		args: args[2:],
 	}
 
-	err = commands.Run(&state, cmd)
+	err = commands.Run(state, cmd)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
