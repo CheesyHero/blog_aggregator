@@ -12,6 +12,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 
 	"context"
 	"time"
@@ -313,6 +315,7 @@ func main() { // !!
 	commands.Register("follow", middlewareLoggedIn(handlerFollow))
 	commands.Register("following", middlewareLoggedIn(handlerFollowing))
 	commands.Register("unfollow", middlewareLoggedIn(handlerUnfollow))
+	commands.Register("browse", middlewareLoggedIn(handlerBrowse))
 
 	args := os.Args
 	if len(args) < 2 {
@@ -391,7 +394,94 @@ func scrapeFeeds(s *State) error {
 	}
 
 	for _, item := range rssFeed.Channel.Item {
-		fmt.Printf("- %s\n", item.Title)
+		_, err := s.database.CreatePost(context.Background(), database.CreatePostParams{
+			ID:          uuid.New(),
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+			Title:       item.Title,
+			Url:         item.Link,
+			Description: sql.NullString{String: item.Description, Valid: item.Description != ""},
+			PublishedAt: parsePubDate(item.PubDate),
+			FeedID:      feed.ID,
+		})
+
+		if err != nil {
+			if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+				continue
+			}
+
+			fmt.Printf("error creating post: %v\n", err)
+			continue
+		}
+
+		fmt.Printf("Saved post: %s\n", item.Title)
+	}
+
+	return nil
+}
+func parsePubDate(pubDate string) sql.NullTime {
+	if pubDate == "" {
+		return sql.NullTime{}
+	}
+
+	layouts := []string{
+		time.RFC1123Z,
+		time.RFC1123,
+		time.RFC822Z,
+		time.RFC822,
+		time.RFC3339,
+		"Mon, 02 Jan 2006 15:04:05 -0700",
+		"Mon, 02 Jan 2006 15:04:05 MST",
+	}
+
+	for _, layout := range layouts {
+		t, err := time.Parse(layout, pubDate)
+		if err == nil {
+			return sql.NullTime{
+				Time:  t,
+				Valid: true,
+			}
+		}
+	}
+
+	return sql.NullTime{}
+}
+func handlerBrowse(s *State, cmd Command, user database.User) error {
+	limit := int32(2)
+
+	if len(cmd.args) > 1 {
+		return fmt.Errorf("usage: browse [limit]")
+	}
+
+	if len(cmd.args) == 1 {
+		parsedLimit, err := strconv.Atoi(cmd.args[0])
+		if err != nil {
+			return err
+		}
+		limit = int32(parsedLimit)
+	}
+
+	posts, err := s.database.GetPostsForUser(context.Background(), database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  limit,
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, post := range posts {
+		fmt.Printf("Title: %s\n", post.Title)
+		fmt.Printf("URL: %s\n", post.Url)
+
+		if post.Description.Valid {
+			fmt.Printf("Description: %s\n", post.Description.String)
+		}
+
+		if post.PublishedAt.Valid {
+			fmt.Printf("Published: %v\n", post.PublishedAt.Time)
+		}
+
+		fmt.Println()
 	}
 
 	return nil
