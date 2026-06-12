@@ -177,16 +177,3 @@ blog_aggregator/
 ├── sqlc.yaml
 └── README.md
 ```
-
-## Future Improvements
-
-* Automatic post deduplication
-* Search functionality
-* Categories and tags
-* TUI interface
-* Post bookmarking
-* Feed health monitoring
-
-## License
-
-This project is provided for educational purposes and was built while completing the Boot.dev Backend Development curriculum.
